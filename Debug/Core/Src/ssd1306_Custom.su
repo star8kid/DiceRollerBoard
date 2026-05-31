@@ -1,0 +1,6 @@
+../Core/Src/ssd1306_Custom.c:15:6:ssd1306_Reset	4	static
+../Core/Src/ssd1306_Custom.c:19:6:ssd1306_Send_Cmd	40	static
+../Core/Src/ssd1306_Custom.c:24:6:ssd1306_Send_Data_Buf	32	static
+../Core/Src/ssd1306_Custom.c:28:6:ssd1306_Display_Set	48	static
+../Core/Src/ssd1306_Custom.c:42:6:ssd1306_Set_Contrast_Control	48	static
+../Core/Src/ssd1306_Custom.c:50:6:ssd1306_Init	80	static
