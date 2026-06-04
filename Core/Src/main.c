@@ -18,6 +18,8 @@
 #include <stdio.h>
 #include <stdint.h>
 #include "ssd1306_Custom.h"
+#include "ssd1306_fonts_Custom.h"
+#include "mpu6050.h"
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
@@ -39,30 +41,7 @@
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
-// Define "#defs" for the MPU
 
-/* MPU-6050 Defs */
-#define MPU6050_ADDR_I2C (0x68 << 1)
-#define MPU6050_PROFILER_THRESH 25
-
-/* MPU-6050 Register Map Consts */
-
-// I2C Registers
-#define MPU6050_REG_I2C_MST_CTRL 0x24
-#define MPU6050_REG_I2C_MST_STATUS 0x36
-
-// Control / Power Management Registers
-#define MPU6050_REG_USER_CTRL 0x6A
-#define MPU6050_REG_PWR_MGMT_1 0x6B
-
-// Accelerometer Registers
-#define MPU6050_REG_ACCEL_CONFIG 0x1C
-#define MPU6050_REG_ACCEL_XOUT_H 0x3B
-#define MPU6050_REG_ACCEL_XOUT_L 0x3C
-#define MPU6050_REG_ACCEL_YOUT_H 0x3D
-#define MPU6050_REG_ACCEL_YOUT_L 0x3E
-#define MPU6050_REG_ACCEL_ZOUT_H 0x3F
-#define MPU6050_REG_ACCEL_ZOUT_L 0x40
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
@@ -71,10 +50,6 @@ I2C_HandleTypeDef hi2c1;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-// MPU-6050 Acceleration Variables Struct
-typedef struct{
-	int16_t accel_X_RAW, accel_Y_RAW, accel_Z_RAW;
-} mpu6050_AccelStruct;
 
 uint8_t mpu6050_profiler = 0;
 uint8_t mpu6050_measurement_flag = 0;
@@ -91,48 +66,6 @@ static void MX_I2C1_Init(void);
 int __io_putchar(int ch){
 	HAL_UART_Transmit(&huart2, (uint8_t*)&ch, 1, HAL_MAX_DELAY);
 	return ch;
-}
-/* MPU-6050 Function Defs */
-HAL_StatusTypeDef mpu6050_Wake(){
-	// To wake the device, write a 0 to the SLEEP bit field in the PWR_MGMT_1 register in the memory map
-	uint8_t dataW = 0x00;
-	// Write to the register and return the state of the I2C Communication
-	// Here, `I2C_MEMADD_SIZE_8BIT` means the total size of the memory space of the register
-	// Blocking Mode
-	return HAL_I2C_Mem_Write(&hi2c1, MPU6050_ADDR_I2C, MPU6050_REG_PWR_MGMT_1, I2C_MEMADD_SIZE_8BIT, &dataW, 1, HAL_MAX_DELAY);
-	// Use Master TX Function instead
-//	return HAL_I2C_Master_Transmit(hi2c, DevAddress, pData, Size, Timeout)
-//	return HAL_I2C_Master_Transmit(&hi2c1, MPU6050_ADDR_I2C, MPU6050_REG_PWR_MGMT_1, &dataW, 1, HAL_MAX_DELAY);
-	// Non-Blocking (Interrupt) Mode
-//	return HAL_I2C_Mem_Write_IT(&hi2c1, MPU6050_ADDR_I2C, MPU6050_REG_PWR_MGMT_1, 1, &dataW, 1);
-}
-
-HAL_StatusTypeDef mpu6050_Sleep(){
-	// To sleep the device, write a 1 to the SLEEP bit field in the PWR_MGMT_1 register in the memory map
-	uint8_t dataW = 0x70;
-	return HAL_I2C_Mem_Write(&hi2c1, MPU6050_ADDR_I2C, MPU6050_REG_PWR_MGMT_1, I2C_MEMADD_SIZE_8BIT, &dataW, 1, HAL_MAX_DELAY);
-//	return HAL_I2C_Master_Transmit(&hi2c1, MPU6050_ADDR_I2C, MPU6050_REG_PWR_MGMT_1, &dataW, 1, HAL_MAX_DELAY);
-}
-
-
-HAL_StatusTypeDef mpu6050_MeasureAccel(mpu6050_AccelStruct *mpuStructPtr){
-	// To receive data, create a 6-Byte buffer to hold it
-	uint8_t dataBuff[6];
-	HAL_StatusTypeDef status;
-
-	// Next, write to the first acceleration register
-	status = HAL_I2C_Mem_Read(&hi2c1, MPU6050_ADDR_I2C, MPU6050_REG_ACCEL_XOUT_H, I2C_MEMADD_SIZE_8BIT, dataBuff, 6, HAL_MAX_DELAY);
-//	status = HAL_I2C_Master_Receive(hi2c, DevAddress, pData, Size, Timeout);
-//	status = HAL_I2C_Master_Receive(&hi2c1, MPU6050_ADDR_I2C, pData, Size, Timeout);
-	// Good Practice: If the status of the comms is not okay, return status
-	if(status != HAL_OK) return status;
-
-	// Next, redefine the values in the acceleration struct
-	mpuStructPtr->accel_X_RAW = (int16_t)((dataBuff[0] << 8) | dataBuff[1]);
-	mpuStructPtr->accel_Y_RAW = (int16_t)((dataBuff[2] << 8) | dataBuff[3]);
-	mpuStructPtr->accel_Z_RAW = (int16_t)((dataBuff[4] << 8) | dataBuff[5]);
-
-	return HAL_OK;
 }
 
 /* OLED Display (SSD1306 IC) Function Defs */
@@ -175,33 +108,64 @@ int main(void)
   MX_USART2_UART_Init();
   MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
-//  mpu6050_AccelStruct mpu6050StructInst;
-//	// Wake MPU, Produce three acceleration measurements, then sleep MPU
-//  HAL_StatusTypeDef mpuWakeStatus = mpu6050_Sleep();
-//  mpuWakeStatus = mpu6050_Wake();
-////  HAL_StatusTypeDef mpuWakeStatus = mpu6050_Wake();
-//	if(mpuWakeStatus != HAL_OK){
-//		// Execute a busy-wait loop if the MPU is not initialized properly
-//		while(1){}
-//	}
 
-	// Define For-Loop to take a discrete number of measurements
-//	for (uint8_t iter = 0; iter < MPU6050_PROFILER_THRESH; iter++){
-//		if(mpu6050_MeasureAccel(&mpu6050StructInst) == HAL_OK){
-//			printf("Accel X: %X, Accel Y: %X, Accel Z: %X \n\r", mpu6050StructInst.accel_X_RAW, mpu6050StructInst.accel_Y_RAW, mpu6050StructInst.accel_Z_RAW);
-//			//			  // Todo: Double check with the above results to see what sensitivity has been selected
-//			//			  // AFS_SEL = 0 ---> 0x4000 = +g
-//			//			  // AFS_SEL = 1 ---> 0x2000 = +g
-//		}
-//		else{
-//			printf("Error with measurement (!= HAL_OK) \n\r");
-//			break;
-//		}
-//		HAL_Delay(500);
-//	}
-//	mpu6050_Sleep();
-//	printf("MPU-6050 Measurement Over! \n\r");
+  // SSD1306 Test Code
+  ssd1306_Init(hi2c1);
 
+  // Test Screen Fill
+//  ssd1306_FillBuffer();
+//  ssd1306_UpdateScreen(hi2c1);
+//  ssd1306_ClearBuffer();
+//  ssd1306_UpdateScreen(hi2c1);
+
+  // Test Drawing Pixels onto the screen (Form a tiny L)
+//  ssd1306_DrawPixel(20, 20, White);
+//  ssd1306_UpdateScreen(hi2c1);
+//  ssd1306_DrawPixel(20, 21, White);
+//  ssd1306_UpdateScreen(hi2c1);
+//  ssd1306_DrawPixel(20, 22, White);
+//  ssd1306_UpdateScreen(hi2c1);
+//
+//  ssd1306_DrawPixel(21, 20, White);
+//  ssd1306_UpdateScreen(hi2c1);
+//  ssd1306_DrawPixel(22, 20, White);
+//  ssd1306_UpdateScreen(hi2c1);
+//  ssd1306_DrawPixel(23, 20, White);
+//  ssd1306_UpdateScreen(hi2c1);
+
+  // Test Writing Characters to screen
+//  ssd1306_SetFontCursor(30, 30);
+//  ssd1306_WriteChar('i', Font_7x10);
+//  ssd1306_UpdateScreen(hi2c1);
+//  ssd1306_WriteChar(' ', Font_7x10);
+//  ssd1306_UpdateScreen(hi2c1);
+//  ssd1306_WriteChar('d', Font_7x10);
+//  ssd1306_UpdateScreen(hi2c1);
+//  ssd1306_WriteChar('i', Font_7x10);
+//  ssd1306_UpdateScreen(hi2c1);
+//  ssd1306_WriteChar('d', Font_7x10);
+//  ssd1306_UpdateScreen(hi2c1);
+//  ssd1306_WriteChar(' ', Font_7x10);
+//  ssd1306_UpdateScreen(hi2c1);
+//  ssd1306_WriteChar('i', Font_7x10);
+//  ssd1306_UpdateScreen(hi2c1);
+//  ssd1306_WriteChar('t', Font_7x10);
+//  ssd1306_UpdateScreen(hi2c1);
+//  ssd1306_WriteChar('\0', Font_7x10);
+//  ssd1306_UpdateScreen(hi2c1);
+//  ssd1306_SetScreen(1, hi2c1);
+
+  // Test Printing out strings
+  ssd1306_SetFontCursor(0, 10);
+  ssd1306_WriteString("Dice Roller", Font_7x10);
+  ssd1306_UpdateScreen(hi2c1);
+  ssd1306_SetFontCursor(0, 20);
+  ssd1306_WriteString("For DnD!!", Font_7x10);
+  ssd1306_UpdateScreen(hi2c1);
+
+
+
+  // Define
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -412,6 +376,8 @@ void assert_failed(uint8_t *file, uint32_t line)
   /* USER CODE BEGIN 6 */
   /* User can add his own implementation to report the file name and line number,
      ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
+//	printf("Assertion Failed in File '%s' on Line %ld\r\n", file, line);
+//	while(1){}
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */

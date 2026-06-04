@@ -1,0 +1,3 @@
+../Core/Src/mpu6050.c:15:19:mpu6050_Wake	1
+../Core/Src/mpu6050.c:29:19:mpu6050_Sleep	1
+../Core/Src/mpu6050.c:37:19:mpu6050_MeasureAccel	2
